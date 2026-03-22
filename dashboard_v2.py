@@ -9,6 +9,8 @@ import urllib.parse
 
 from flask import Flask, jsonify, render_template, request
 
+from messaging.ai_message import generate_whatsapp_message
+
 DB_PATH = "leads_v2.db"
 
 app = Flask(__name__, template_folder="templates")
@@ -42,8 +44,9 @@ def row_to_lead(row: sqlite3.Row) -> dict:
         "rating": row["rating"],
         "reviews_count": row["reviews_count"],
         "maps_url": row["maps_url"],
-        "social_link": row["social_link"] if "social_link" in keys else None,
-        "category": row["category"] if "category" in keys else None,
+        "social_link":  row["social_link"]  if "social_link"  in keys else None,
+        "category":     row["category"]     if "category"     in keys else None,
+        "description":  row["description"]  if "description"  in keys else None,
         "email": row["email"],
         "status": row["status"],
         "wa_url": (
@@ -136,6 +139,58 @@ def api_update_status(lead_id: int):
     conn.close()
 
     return jsonify({"ok": True, "id": lead_id, "status": new_status})
+
+
+@app.route("/api/send-whatsapp/<int:lead_id>", methods=["POST"])
+def api_send_whatsapp(lead_id: int):
+    """Automate WhatsApp Web to send a message to the lead's phone number."""
+    data = request.get_json(silent=True) or {}
+    message = (data.get("message") or "").strip()
+    if not message:
+        return jsonify({"ok": False, "error": "message is required"}), 400
+
+    conn = get_db()
+    row = conn.execute(
+        "SELECT phone FROM restaurants WHERE id = ?", (lead_id,)
+    ).fetchone()
+    conn.close()
+
+    if not row:
+        return jsonify({"ok": False, "error": "lead not found"}), 404
+    phone = row["phone"]
+    if not phone or phone == "N/A":
+        return jsonify({"ok": False, "error": "no phone number for this lead"}), 400
+
+    try:
+        from messaging.whatsapp import send_message
+        send_message(phone, message)
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/ai-message/<int:lead_id>", methods=["POST"])
+def api_ai_message(lead_id: int):
+    """Generate a personalized WhatsApp message for a lead via Claude."""
+    conn = get_db()
+    row = conn.execute(
+        "SELECT * FROM restaurants WHERE id = ?", (lead_id,)
+    ).fetchone()
+    conn.close()
+
+    if not row:
+        return jsonify({"ok": False, "error": "lead not found"}), 404
+
+    lead = row_to_lead(row)
+    try:
+        from scraper.maps_profile import scrape_profile
+        maps_context = scrape_profile(lead.get("maps_url") or "")
+        message = generate_whatsapp_message(lead, maps_context)
+        return jsonify({"ok": True, "message": message})
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 503
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"AI generation failed: {e}"}), 500
 
 
 if __name__ == "__main__":

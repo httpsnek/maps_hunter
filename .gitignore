@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+
+# Environment & secrets
+.env
+
+# Database (contains lead data)
+*.db
+
+# WhatsApp Web browser session (contains auth cookies)
+whatsapp_session/
+
+# IDE
+.idea/
+.vscode/
+
+# macOS
+.DS_Store

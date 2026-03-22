@@ -23,6 +23,7 @@ QUERIES: list[tuple[str, str]] = [
     ("Manikúra Vinohrady",       "nail_salon"),
     ("Autoservis Praha 4",       "auto_repair"),
     ("Yoga studio Prague",       "yoga"),
+    ("Drogerie Praha",       "drogerie"),
 ]
 
 
@@ -53,8 +54,9 @@ def init_db(db_path: str = DB_PATH) -> sqlite3.Connection:
     # Migrate older DBs that are missing newer columns
     existing = {row[1] for row in conn.execute("PRAGMA table_info(restaurants)")}
     migrations = {
-        "social_link": "ALTER TABLE restaurants ADD COLUMN social_link TEXT DEFAULT NULL",
-        "category":    "ALTER TABLE restaurants ADD COLUMN category TEXT DEFAULT NULL",
+        "social_link":  "ALTER TABLE restaurants ADD COLUMN social_link TEXT DEFAULT NULL",
+        "category":     "ALTER TABLE restaurants ADD COLUMN category TEXT DEFAULT NULL",
+        "description":  "ALTER TABLE restaurants ADD COLUMN description TEXT DEFAULT NULL",
     }
     for col, sql in migrations.items():
         if col not in existing:
@@ -68,9 +70,9 @@ def insert_restaurant(conn: sqlite3.Connection, data: dict) -> bool:
     """Returns True if a new row was inserted (not a duplicate)."""
     conn.execute("""
         INSERT OR IGNORE INTO restaurants
-            (name, address, phone, rating, reviews_count, maps_url, email, social_link, category, status)
+            (name, address, phone, rating, reviews_count, maps_url, email, social_link, category, description, status)
         VALUES
-            (:name, :address, :phone, :rating, :reviews_count, :maps_url, :email, :social_link, :category, 'new')
+            (:name, :address, :phone, :rating, :reviews_count, :maps_url, :email, :social_link, :category, :description, 'new')
     """, data)
     conn.commit()
     changed = conn.execute("SELECT changes()").fetchone()[0]
@@ -290,6 +292,26 @@ async def extract_place_data(page, url: str) -> dict | None:
     except Exception:
         pass
 
+    # Extract business description / type subtitle shown below the name
+    # Google Maps renders this as a clickable category button or a plain span.
+    # We try several selectors and take the first non-empty result.
+    description: str | None = None
+    _desc_selectors = [
+        'button[jsaction*="category"]',   # clickable category label
+        "div.fontBodyMedium span",        # subtitle span below h1
+        "span.DkEaL",                     # alternate class used in some variants
+    ]
+    for sel in _desc_selectors:
+        try:
+            el = page.locator(sel).first
+            if await el.count() > 0:
+                text = (await el.inner_text(timeout=2000)).strip()
+                if text and len(text) < 120:  # sanity-check: skip huge blobs
+                    description = text
+                    break
+        except Exception:
+            continue
+
     return {
         "name": name,
         "address": address,
@@ -299,7 +321,8 @@ async def extract_place_data(page, url: str) -> dict | None:
         "maps_url": url,
         "email": "",
         "social_link": social_link,
-        "category": None,  # filled in by the caller
+        "category": None,       # filled in by the caller
+        "description": description,
     }
 
 
