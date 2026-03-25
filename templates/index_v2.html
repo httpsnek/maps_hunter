@@ -522,7 +522,7 @@
     document.getElementById('modal-title').textContent = 'AI-Generated Message';
     document.getElementById('modal-sub').textContent   = cardName;
     document.getElementById('modal-body').innerHTML =
-      '<div class="modal-spinner"><span class="spinner"></span>Reading Google Maps profile &amp; generating message…</div>';
+      '<div class="modal-spinner"><span class="spinner"></span>Generating personalized message…</div>';
     document.getElementById('modal-footer').style.display = 'none';
     document.getElementById('ai-modal').classList.add('open');
 
@@ -580,7 +580,7 @@
 
   async function regenerateMessage() {
     document.getElementById('modal-body').innerHTML =
-      '<div class="modal-spinner"><span class="spinner"></span>Re-reading Maps profile &amp; regenerating…</div>';
+      '<div class="modal-spinner"><span class="spinner"></span>Regenerating message…</div>';
     document.getElementById('modal-footer').style.display = 'none';
     await fetchAIMessage();
   }

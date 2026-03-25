@@ -9,16 +9,26 @@ import urllib.error
 import urllib.request
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-DEFAULT_MODEL   = "meta-llama/llama-3.3-70b-instruct"
+DEFAULT_MODEL   = "anthropic/claude-3.5-haiku"
 
 
-def generate_whatsapp_message(lead: dict, maps_context: dict | None = None) -> str:
+def _build_reviews_array(lead: dict) -> str:
+    """Format DB review data into a string for the prompt."""
+    parts: list[str] = []
+    if lead.get("rating"):
+        line = f"Overall rating: {lead['rating']} ⭐"
+        if lead.get("reviews_count"):
+            line += f" based on {lead['reviews_count']} Google Maps reviews"
+        parts.append(line)
+    # Actual review text is not stored in the DB yet — AI will personalize
+    # based on rating and category context instead.
+    return "; ".join(parts) if parts else "no review data available"
+
+
+def generate_whatsapp_message(lead: dict) -> str:
     """
-    Generate a personalized WhatsApp message for a given lead.
+    Generate a personalized WhatsApp message for a given lead using only DB data.
     Reads OPENROUTER_API_KEY from the environment.
-
-    maps_context (optional): enriched data from scraper.maps_profile.scrape_profile —
-        keys: business_type, about, reviews (list[str])
     """
     api_key = os.environ.get("OPENROUTER_API_KEY")
     if not api_key:
@@ -27,42 +37,33 @@ def generate_whatsapp_message(lead: dict, maps_context: dict | None = None) -> s
     model = os.environ.get("OPENROUTER_MODEL", DEFAULT_MODEL)
 
     name     = (lead.get("name") or "").strip() or "your business"
-    category = (lead.get("category") or "").replace("_", " ")
-    ctx      = maps_context or {}
-
-    # Build a rich context block from whatever we have
-    context_lines: list[str] = [f"Business name: {name}"]
-
-    business_type = ctx.get("business_type") or lead.get("description") or category
-    if business_type:
-        context_lines.append(f"Business type: {business_type}")
-
-    about = ctx.get("about")
-    if about:
-        context_lines.append(f"About them: {about}")
-
-    reviews = ctx.get("reviews") or []
-    if reviews:
-        formatted = "\n".join(f'  - "{r}"' for r in reviews[:4])
-        context_lines.append(f"What customers say about them:\n{formatted}")
-
-    context_block = "\n".join(context_lines)
+    category = (lead.get("category") or lead.get("description") or "").replace("_", " ")
 
     prompt = (
-        "You are helping a web developer write a short, personalised WhatsApp cold-outreach "
-        "message in Czech to a local business that has no website.\n\n"
-        "BUSINESS PROFILE:\n"
-        f"{context_block}\n\n"
-        "TASK: Write a 3-sentence WhatsApp message offering to build them a professional website.\n\n"
-        "Rules:\n"
-        "- Sentence 1: reference something specific you noticed about their business "
-        "(use their name, what they do, or a detail from reviews / about section)\n"
-        "- Sentence 2: offer to create a website tailored specifically to their business\n"
-        "- Sentence 3: ask if they'd be open to a short call\n"
-        "- Friendly and natural — not a generic template\n"
-        "- No emoji, no salesy buzzwords\n"
-        "- Czech language only\n"
-        "- Return only the message text, nothing else"
+        "You are an expert Czech B2B sales representative living in Prague.\n"
+        "Your goal is to write a highly personalized, natural WhatsApp message to a local business owner.\n\n"
+        "INPUT DATA FROM DATABASE:\n"
+        f"- Business Name: {name}\n"
+        f"- Niche/Category: {category}\n"
+        f"- Last 3 User Reviews: {_build_reviews_array(lead)}\n\n"
+        "STRICT INSTRUCTIONS FOR HYPER-PERSONALIZATION:\n"
+        "1. FLAWLESS CZECH: Use 100% natural, conversational Czech (vykání). No robotic phrases. No weird characters.\n"
+        "2. THE HOOK (CRITICAL): Read the reviews data. You MUST pick ONE specific, unique detail from the reviews "
+        "(e.g., a specific compliment, a recurring theme) and mention it in your first sentence. "
+        "Do not just say \"you have good reviews\" — prove that you read them!\n"
+        "3. UNIQUE OPENINGS: Never start every message with \"Dobrý den, všiml jsem si...\". Mix it up. "
+        "Use variations like \"Zdravím do [Business Name],\", \"Dobrý den, koukal jsem na vaše recenze...\", "
+        "\"Přeji pěkný den,\".\n"
+        "4. THE PAIN POINT: Naturally transition to the fact that they don't have a website. "
+        "Frame it as a missed opportunity for their specific niche "
+        "(e.g., if it's a salon, say clients can't book online; if a cafe, say they can't see the menu).\n"
+        "5. THE OFFER: Mention that your local tech team builds fast, custom solutions to solve this.\n"
+        "6. THE CTA: End by asking permission to send a link to your portfolio. "
+        "(e.g., \"Můžu poslat odkaz na naše portfolio?\", \"Zajímala by vás ukázka naší práce?\").\n\n"
+        "CONSTRAINTS:\n"
+        "- Maximum 3-4 short sentences.\n"
+        "- DO NOT use placeholders.\n"
+        "- Output ONLY the final Czech text, nothing else."
     )
 
     payload = json.dumps({

@@ -183,9 +183,7 @@ def api_ai_message(lead_id: int):
 
     lead = row_to_lead(row)
     try:
-        from scraper.maps_profile import scrape_profile
-        maps_context = scrape_profile(lead.get("maps_url") or "")
-        message = generate_whatsapp_message(lead, maps_context)
+        message = generate_whatsapp_message(lead)
         return jsonify({"ok": True, "message": message})
     except ValueError as e:
         return jsonify({"ok": False, "error": str(e)}), 503
