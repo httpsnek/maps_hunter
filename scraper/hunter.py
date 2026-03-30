@@ -255,7 +255,7 @@ async def extract_place_data(page, url: str) -> dict | None:
         addr_btn = page.locator('button[data-item-id="address"]')
         if await addr_btn.count() > 0:
             address = await addr_btn.get_attribute("aria-label") or "N/A"
-            address = address.replace("Address: ", "").strip()
+            address = address.replace("Address: ", "").replace("Adresa: ", "").strip()
     except Exception:
         pass
 
@@ -265,7 +265,7 @@ async def extract_place_data(page, url: str) -> dict | None:
         phone_btn = page.locator('button[data-item-id*="phone:tel:"]')
         if await phone_btn.count() > 0:
             phone = await phone_btn.get_attribute("aria-label") or "N/A"
-            phone = phone.replace("Phone: ", "").strip()
+            phone = phone.replace("Phone: ", "").replace("Telefon: ", "").strip()
     except Exception:
         pass
 

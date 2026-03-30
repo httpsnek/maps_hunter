@@ -19,6 +19,23 @@ app = Flask(__name__, template_folder="templates")
 def get_db() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS restaurants (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            name          TEXT,
+            address       TEXT,
+            phone         TEXT,
+            rating        REAL,
+            reviews_count INTEGER,
+            maps_url      TEXT,
+            email         TEXT DEFAULT '',
+            social_link   TEXT DEFAULT '',
+            category      TEXT DEFAULT '',
+            description   TEXT DEFAULT NULL,
+            status        TEXT DEFAULT 'new'
+        )
+    """)
+    conn.commit()
     return conn
 
 
@@ -63,12 +80,13 @@ CATEGORY_LABELS = {
     "nail_salon":  "Nail Salon",
     "auto_repair": "Auto Repair",
     "yoga":        "Yoga",
+    "drogerie":    "Drogerie",
 }
 
 
 @app.route("/")
 def index():
-    status_filter   = request.args.get("status",   "new")
+    status_filter   = request.args.get("status",   "all")
     category_filter = request.args.get("category", "all")
     conn = get_db()
 
@@ -83,7 +101,7 @@ def index():
 
     where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
     rows = conn.execute(
-        f"SELECT * FROM restaurants {where} ORDER BY rating DESC NULLS LAST",
+        f"SELECT * FROM restaurants {where} ORDER BY CAST(rating AS REAL) DESC NULLS LAST",
         params,
     ).fetchall()
 

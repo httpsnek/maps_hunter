@@ -297,9 +297,9 @@
       {% if lead.rating %}
       <div class="meta-row rating-row">
         <span class="stars">★</span>
-        <strong style="color:#e2e8f0">{{ "%.1f"|format(lead.rating) }}</strong>
+        <strong style="color:#e2e8f0">{{ "%.1f"|format(lead.rating|float) }}</strong>
         {% if lead.reviews_count %}
-          <span class="reviews">({{ "{:,}".format(lead.reviews_count) }} reviews)</span>
+          <span class="reviews">({{ lead.reviews_count }} reviews)</span>
         {% endif %}
       </div>
       {% endif %}
