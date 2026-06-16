@@ -1,180 +1,154 @@
 # Maps Hunter
 
-**Automated lead generation tool that scrapes Google Maps to find businesses without websites — ready for outreach.**
+A Google Maps lead-generation tool for finding Prague businesses that **don't have a real website**. It scrapes Google Maps with Playwright, stores leads in SQLite, and serves a Flask dashboard for reviewing them, generating personalized cold messages with an LLM, and sending those messages over WhatsApp.
 
-Designed for B2B sales teams targeting specific niches in Prague (tattoo studios, dentists, nail salons, auto repair, yoga studios, barbershops). Maps Hunter collects contact details, filters out businesses that already have real websites, stores everything in a local database, and provides a web dashboard to manage and act on leads via WhatsApp.
+The end-to-end flow: **scrape → review in dashboard → generate AI message → send via WhatsApp.**
 
----
-
-## Features
-
-- **Smart filtering** — Skips businesses with real websites; keeps those only on Instagram, Facebook, TripAdvisor, etc.
-- **Automated scraping** — Playwright-driven Chromium handles GDPR consent, infinite scroll, and data extraction
-- **Lead database** — SQLite storage with deduplication (unique on name + address)
-- **Web dashboard** — Flask-based UI with status filtering, category badges, and AJAX updates
-- **WhatsApp integration** — One-click pre-filled outreach message in Czech
-- **Test mode** — Quick 10-result runs for development/validation
-
----
-
-## Tech Stack
-
-- **Python 3.10+**
-- [Playwright](https://playwright.dev/python/) — browser automation
-- [Flask](https://flask.palletsprojects.com/) — dashboard web server
-- [SQLite3](https://docs.python.org/3/library/sqlite3.html) — local database
-- BeautifulSoup4 — HTML parsing
-
----
-
-## Installation
-
-```bash
-# Clone the repo
-git clone <your-repo-url>
-cd map-auto
-
-# Install Python dependencies
-pip install -r requirements.txt
-
-# Install Playwright browser
-playwright install chromium
-```
-
----
-
-## Usage
-
-### 1. Run the Scraper
-
-```bash
-# Test mode — 10 results per query, browser visible
-python hunter.py --test --no-headless
-
-# Production mode — up to 100 results per query, headless
-python hunter.py
-
-# Explicit headless flag
-python hunter.py --headless
-```
-
-The scraper will:
-1. Open Google Maps and accept the GDPR consent prompt
-2. Search each configured query (e.g. `"Tattoo studio Praha"`)
-3. Scroll through results and visit each place
-4. Skip businesses with real websites
-5. Save remaining leads to `leads_v2.db`
-6. Print a summary table of new leads collected
-
-**Example output:**
-```
-[12:34:56] Query: 'Tattoo studio Praha' (category: tattoo)
-[12:34:57] Scrolling (target: 200 URLs)…
-[12:35:10] Collected 142 place URLs.
-  → saved: Tattoo Studio XYZ | +420...
-
-Total new leads across all queries: 47
-```
-
-### 2. Open the Dashboard
-
-```bash
-# Recommended (v2 — AJAX, category filters, toast notifications)
-python dashboard_v2.py
-# → http://localhost:5051
-
-# Original version (simpler, full-page reloads)
-python dashboard.py
-# → http://localhost:5050
-```
-
-### 3. Manage & Contact Leads
-
-In the dashboard you can:
-- Filter leads by **status** (New / Contacted / Rejected) and **category**
-- Open the business directly on **Google Maps**
-- Send a **WhatsApp message** with a pre-filled Czech outreach text
-- Mark leads as **Contacted** or **Rejected** (with undo support in v2)
-
----
-
-## Database Schema
-
-```sql
-CREATE TABLE restaurants (
-    id            INTEGER PRIMARY KEY,
-    name          TEXT,
-    address       TEXT,
-    phone         TEXT,
-    rating        REAL,
-    reviews_count INTEGER,
-    maps_url      TEXT,
-    email         TEXT DEFAULT NULL,
-    social_link   TEXT DEFAULT NULL,
-    category      TEXT DEFAULT NULL,
-    status        TEXT DEFAULT 'new',
-    UNIQUE(name, address)
-)
-```
-
-**Status values:** `new` · `contacted` · `rejected`
-**Category values:** `tattoo` · `dentist` · `nail_salon` · `auto_repair` · `yoga` · `barbershop`
-
----
-
-## Configuration
-
-Runtime settings are defined directly in `hunter.py`:
-
-| Setting | Location | Default |
-|---|---|---|
-| Search queries | `QUERIES` list (~line 20) | Tattoo, Dentist, Nail, Auto, Yoga in Prague |
-| Results limit | `--test` flag | 10 (test) / 100 (prod) |
-| Database path | `DB_PATH` constant | `leads_v2.db` |
-| Non-website domains | `NON_WEBSITE_DOMAINS` set | Instagram, Facebook, TripAdvisor, etc. |
-
-To target a different city or niche, update the `QUERIES` list:
-```python
-QUERIES = [
-    ("Coffee shop Brno", "coffee"),
-    ("Hair salon Brno", "hair_salon"),
-]
-```
-
----
-
-## Project Structure
+## Project structure
 
 ```
 map-auto/
-├── hunter.py           # Core scraper (Playwright automation)
-├── dashboard.py        # Flask dashboard v1 (port 5050)
-├── dashboard_v2.py     # Flask dashboard v2 (port 5051, recommended)
+├── scraper/
+│   ├── hunter.py          # Main scraper: multi-query Maps scan → leads_v2.db
+│   └── maps_profile.py    # Rich per-place scrape (type, about, reviews) for personalization
+├── messaging/
+│   ├── ai_message.py      # LLM-generated Czech WhatsApp message via OpenRouter
+│   └── whatsapp.py        # WhatsApp Web automation (Playwright persistent session)
 ├── templates/
-│   ├── index.html      # Dashboard v1 UI
-│   └── index_v2.html   # Dashboard v2 UI (AJAX, category filters)
-├── leads_v2.db         # SQLite database (auto-created on first run)
-└── requirements.txt    # Python dependencies
+│   ├── index.html         # Legacy dashboard template
+│   └── index_v2.html      # v2 dashboard template
+├── dashboard.py           # Legacy dashboard (port 5050)
+├── dashboard_v2.py        # Main dashboard with AI + WhatsApp (port 5051)
+├── test_batch.py          # Manual test: POST a batch of leads to a Make.com webhook
+├── test_webhook.py        # Manual test: POST a single lead to a Make.com webhook
+├── requirements.txt
+├── .env.example
+└── leads_v2.db            # SQLite database (gitignored, created on first run)
 ```
 
----
+## Setup
 
-## Workflow
+```bash
+# Install dependencies
+pip install -r requirements.txt
 
+# Install the Playwright Chromium browser (required for scraping)
+playwright install chromium
+
+# Configure secrets
+cp .env.example .env        # then edit .env and add your OpenRouter API key
+source .env                 # export the variables into your shell
 ```
-hunter.py            →      leads_v2.db      →      dashboard_v2.py
-(scrape Google Maps)    (store & deduplicate)    (review & outreach)
+
+`requirements.txt` covers `playwright`, `beautifulsoup4`, and `flask`. The two `test_*.py` helper scripts additionally need `requests` (`pip install requests`).
+
+### Environment variables
+
+| Variable | Required | Purpose |
+|----------|----------|---------|
+| `OPENROUTER_API_KEY` | Yes (for AI messages) | Auth for OpenRouter LLM calls. Get one at https://openrouter.ai/keys |
+| `OPENROUTER_MODEL` | No | Override the default model (`anthropic/claude-3.5-haiku`) |
+
+## Usage
+
+Run everything from the project root so the `scraper.*` and `messaging.*` package imports resolve.
+
+### 1. Scrape leads
+
+```bash
+# Full run — up to 100 saved leads per query
+python -m scraper.hunter
+
+# Test mode — 10 leads per query (faster feedback)
+python -m scraper.hunter --test
+
+# Show the browser window for debugging
+python -m scraper.hunter --no-headless
+
+# Combined
+python -m scraper.hunter --test --no-headless
 ```
 
-1. **Scrape** — Run `hunter.py` to populate the database with fresh leads
-2. **Review** — Open the dashboard to browse leads by category and status
-3. **Outreach** — Click WhatsApp to send a message, then mark the lead as Contacted
+Each query scrolls the Maps sidebar to collect up to 200 place URLs, then visits each place and keeps only businesses with **no website or only a social/aggregator link**. New leads are written to `leads_v2.db`.
 
----
+### 2. Review leads in the dashboard
 
-## Legal & Ethical Notice
+```bash
+# Main dashboard — AJAX updates, AI messaging, WhatsApp sending
+python dashboard_v2.py        # http://localhost:5051
 
-This tool automates browser interactions with Google Maps. Use it responsibly:
-- Respect Google's [Terms of Service](https://policies.google.com/terms)
-- Do not run at high frequency or volume that could constitute abuse
-- Only contact businesses in compliance with applicable privacy and marketing laws (e.g. GDPR)
+# Legacy dashboard — simple status review only
+python dashboard.py           # http://localhost:5050
+```
+
+The v2 dashboard lets you filter by status and category, mark leads as `new` / `contacted` / `rejected` without a page reload, generate a personalized message per lead, and trigger a WhatsApp send.
+
+### 3. Send WhatsApp messages
+
+The first time a message is sent, a browser window opens with the WhatsApp Web QR code. Scan it once with your phone — the session is saved to `whatsapp_session/` and subsequent sends reuse it.
+
+## How it works
+
+### Scraping (`scraper/hunter.py`)
+
+- **Queries** are defined in the `QUERIES` list at the top of the file — each is a `(search term, category tag)` pair (tattoo, dentist, nail salon, auto repair, yoga, drogerie).
+- **Consent handling** dismisses Google's GDPR dialog once up front, trying English, Czech, and German selector variants.
+- **Website detection** keeps a business only if its website link is missing or points to a whitelisted non-website domain (instagram.com, facebook.com, menicka.cz, zomato.com, etc.). Any real website causes the place to be skipped.
+- **Data captured** per lead: name, address, phone, rating, review count, Maps URL, social link, category, and a short business-type description.
+
+### Profile enrichment (`scraper/maps_profile.py`)
+
+`scrape_profile(url)` opens a single place page and pulls richer context — business-type subtitle, the "About" blurb, and a few review snippets — for use in message personalization.
+
+### AI message generation (`messaging/ai_message.py`)
+
+`generate_whatsapp_message(lead)` builds a short, natural Czech cold message offering website creation. Before the LLM is called it:
+
+- strips SEO-spam words (business-type and district keywords) out of the business name so only the core brand remains;
+- converts the numeric rating and review count into a qualitative Czech phrase so **exact numbers never reach the model**;
+- selects a category-specific "pain point" the model rephrases freshly each time.
+
+It calls OpenRouter's chat-completions API directly over `urllib` (no SDK dependency).
+
+### WhatsApp automation (`messaging/whatsapp.py`)
+
+`send_message(phone, message)` normalizes the number (adds the Czech `+420` prefix when no country code is present), opens WhatsApp Web with the message pre-filled via a persistent Playwright context, and clicks send.
+
+## Database schema
+
+SQLite database `leads_v2.db`, table `restaurants`:
+
+| Column | Notes |
+|--------|-------|
+| `id` | Primary key |
+| `name`, `address`, `phone` | Business contact details |
+| `rating`, `reviews_count` | Google rating and review count |
+| `maps_url` | Link to the Maps place |
+| `email` | Placeholder, currently unused |
+| `social_link` | Instagram/Facebook link found instead of a website |
+| `description` | Business-type subtitle scraped from the place page |
+| `category` | Query category tag (e.g. `tattoo`, `dentist`) |
+| `status` | `new` / `contacted` / `rejected`, managed from the dashboard |
+
+The scraper auto-migrates older databases, adding the `social_link`, `category`, and `description` columns if they're missing.
+
+## Dashboard API (v2)
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/` | GET | Lead list, filterable by `status` and `category` |
+| `/api/status/<id>` | POST | Update a lead's status (JSON or form) |
+| `/api/ai-message/<id>` | POST | Generate a personalized message for the lead |
+| `/api/send-whatsapp/<id>` | POST | Send a message to the lead over WhatsApp Web |
+
+## Webhook test scripts
+
+`test_batch.py` and `test_webhook.py` are throwaway scripts that POST sample lead data to a Make.com webhook — useful for wiring up an external automation. They are not part of the core scrape/dashboard flow and require the `requests` package.
+
+## Notes
+
+- Python 3.11+ (modern type hints like `list[str]` and `dict | None` are used).
+- The database path is hardcoded as `leads_v2.db` and is resolved relative to the working directory, so run all commands from the project root.
+- `leads_v2.db`, `.env`, and `whatsapp_session/` are gitignored.
+
+> **Security:** the `git remote` URL in this repo currently embeds a GitHub personal-access token. Rotate that token and reset the remote to a plain `https://github.com/...` URL so the credential isn't stored in `.git/config`.
